@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vatteluthu OCR → Modern Tamil</title>
+
+<!-- Open Graph & SEO -->
+<meta name="description" content="Convert Old Tamil (Vatteluthu) inscriptions into Modern Tamil script using OCR and transliteration.">
+<meta property="og:title" content="Vatteluthu OCR → Modern Tamil" />
+<meta property="og:description" content="Upload an old Tamil inscription image and see its Modern Tamil equivalent instantly." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="favicon.png" />
+<meta name="twitter:card" content="summary_large_image" />
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" href="favicon.png" />
+
+<!-- Google Font (Tamil) -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;700&display=swap" rel="stylesheet">
+
+<style>
+  body {
+    font-family: "Noto Sans Tamil", "Latha", sans-serif;
+    background: linear-gradient(180deg, #fafafa 0%, #f5f0ff 100%);
+    color: #222;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  header {
+    text-align: center;
+    padding: 20px 10px;
+    background-color: #4b0082;
+    color: white;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  }
+  h1 {
+    font-size: 1.8em;
+    margin: 0;
+  }
+  #preview {
+    max-width: 100%;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    margin-top: 10px;
+  }
+  textarea {
+    width: 100%;
+    height: 180px;
+    font-size: 18px;
+    padding: 10px;
+    margin-top: 10px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    box-sizing: border-box;
+  }
+  button {
+    background-color: #4b0082;
+    color: white;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    margin: 6px 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s;
+  }
+  button:hover { background-color: #6a0dad; }
+  .feedback-btn { background-color: #008000; }
+  .feedback-btn.awful { background-color: #b00020; }
+  .feedback-btn:hover { opacity: 0.85; }
+  #status { margin-top: 6px; color: #007700; font-size: 15px; }
+  .muted { color: #555; font-size: 14px; margin-bottom: 10px; }
+  footer {
+    text-align: center;
+    margin-top: 40px;
+    font-size: 13px;
+    color: #777;
+  }
+  @media (max-width: 600px) {
+    textarea { height: 150px; font-size: 16px; }
+    button { font-size: 14px; padding: 8px 12px; }
+  }
+</style>
+</head>
+
+<body>
+  <header>
+    <h1>𑀯𑀢𑀢𑀼𑀮𑀼  →  தமிழ்</h1>
+    <p>Vatteluthu OCR → Modern Tamil Converter</p>
+  </header>
+
+  <p class="muted">
+    Upload an image of an old Tamil inscription (Vatteluthu).  
+    The system will recognize and transliterate it into Modern Tamil script.  
+    Validate the result to improve accuracy!
+  </p>
+
+  <input type="file" id="file" accept="image/*" />
+  <button id="run">🔍 Run OCR</button>
+  <button id="downloadTxt">⬇️ Download .txt</button>
+  <button id="downloadPdf">⬇️ Download .pdf</button>
+
+  <img id="preview" alt="Preview will appear here" />
+
+  <h3>Recognized Vatteluthu Text (Raw OCR)</h3>
+  <textarea id="raw" placeholder="OCR output..."></textarea>
+
+  <h3>Modern Tamil Transliteration (Editable)</h3>
+  <textarea id="modern" placeholder="Modern Tamil text will appear here..."></textarea>
+
+  <div>
+    <button class="feedback-btn" id="awesome">👍 Awesome / Correct</button>
+    <button class="feedback-btn awful" id="awful">👎 Awful / Wrong</button>
+    <button id="exportData">📤 Export Validated Data</button>
+  </div>
+
+  <div id="status">Ready</div>
+
+  <footer>
+    © 2025 Vatteluthu OCR | Developed for Tamil Epigraphy Learners  
+  </footer>
+
+  <script src="https://unpkg.com/tesseract.js@v4.1.1/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+  (async () => {
+    const fileInput = document.getElementById("file");
+    const preview = document.getElementById("preview");
+    const runBtn = document.getElementById("run");
+    const rawTa = document.getElementById("raw");
+    const modernTa = document.getElementById("modern");
+    const status = document.getElementById("status");
+    const downloadTxt = document.getElementById("downloadTxt");
+    const downloadPdf = document.getElementById("downloadPdf");
+    const awesomeBtn = document.getElementById("awesome");
+    const awfulBtn = document.getElementById("awful");
+    const exportBtn = document.getElementById("exportData");
+
+    // Load transliteration map
+    let map = {};
+    try {
+      const resp = await fetch("vatteluthu_map.json");
+      map = await resp.json();
+      console.log("Mapping loaded:", Object.keys(map).length, "entries");
+    } catch (e) {
+      alert("⚠️ Could not load vatteluthu_map.json");
+    }
+
+    // Show preview
+    fileInput.addEventListener("change", (ev) => {
+      const file = ev.target.files[0];
+      if (file) preview.src = URL.createObjectURL(file);
+    });
+
+    // Transliteration
+    function transliterate(text) {
+      return [...text].map(ch => map[ch] || ch).join('');
+    }
+
+    // OCR (Tamil fallback for GitHub Pages)
+    runBtn.addEventListener("click", async () => {
+      const file = fileInput.files[0];
+      if (!file) return alert("Please upload an image first.");
+      status.textContent = "Processing OCR...";
+      rawTa.value = "";
+      modernTa.value = "";
+
+      try {
+        const { createWorker } = Tesseract;
+        const worker = await createWorker({
+          logger: (m) => {
+            if (m.status)
+              status.textContent = m.status + " (" + Math.round(m.progress * 100) + "%)";
+          }
+        });
+
+        await worker.load();
+        await worker.loadLanguage("tam"); // Works online (Tamil model)
+        await worker.initialize("tam");
+        const { data: { text } } = await worker.recognize(file);
+        await worker.terminate();
+
+        rawTa.value = text.trim();
+        modernTa.value = transliterate(text.trim());
+        status.textContent = "✅ Done! Review below.";
+      } catch (err) {
+        console.error(err);
+        status.textContent = "❌ Error during OCR.";
+      }
+    });
+
+    // Download text
+    downloadTxt.addEventListener("click", () => {
+      const blob = new Blob([modernTa.value], { type: "text/plain;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "inscription_tamil.txt";
+      a.click();
+    });
+
+    // Download PDF
+    downloadPdf.addEventListener("click", () => {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const lines = doc.splitTextToSize(modernTa.value, 180);
+      doc.text(lines, 10, 10);
+      doc.save("inscription_tamil.pdf");
+    });
+
+    // Feedback save
+    awesomeBtn.addEventListener("click", () => {
+      const record = {
+        imageName: fileInput.files[0]?.name || "unknown",
+        raw: rawTa.value,
+        corrected: modernTa.value,
+        timestamp: new Date().toISOString()
+      };
+      const prev = JSON.parse(localStorage.getItem("validatedPairs") || "[]");
+      prev.push(record);
+      localStorage.setItem("validatedPairs", JSON.stringify(prev));
+      status.textContent = "✅ Saved locally as validated pair.";
+    });
+
+    awfulBtn.addEventListener("click", () => {
+      status.textContent = "❌ Marked as incorrect (not saved).";
+    });
+
+    exportBtn.addEventListener("click", () => {
+      const data = localStorage.getItem("validatedPairs") || "[]";
+      const blob = new Blob([data], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "validated_pairs.json";
+      a.click();
+      status.textContent = "📤 Exported validated data.";
+    });
+  })();
+  </script>
+</body>
+</html>
